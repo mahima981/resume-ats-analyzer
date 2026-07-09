@@ -1,19 +1,23 @@
 import streamlit as st
-import google.generativeai as genai
 import os
-from pathlib import Path
 from dotenv import load_dotenv
+from pathlib import Path
+from google import genai
 
-# Load API key from hello.env (in the same folder as this script)
+# Load API key: works both locally (.env) and on Streamlit Cloud (secrets)
 load_dotenv(Path(__file__).parent / "hello.env")
-api_key = os.getenv("GEMINI_API_KEY")
+
+if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
+    api_key = st.secrets["GEMINI_API_KEY"]
+else:
+    api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
-    st.error("API key not found. Check that hello.env exists and contains GEMINI_API_KEY.")
+    st.error("API key not found. Check hello.env (local) or Streamlit secrets (deployed).")
     st.stop()
 
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel("gemini-3.1-flash-lite")
+# Create Gemini client
+client = genai.Client(api_key=api_key)
 
 # App UI
 st.title("AI Resume Review Chatbot")
@@ -25,7 +29,7 @@ with col1:
     resume_input = st.text_area("Paste your resume:", height=350)
 
 with col2:
-    job_description = st.text_area("Paste the job description (optional, but recommended):", height=350)
+    job_description = st.text_area("Paste the job description (optional):", height=350)
 
 if st.button("Analyze"):
     if not resume_input.strip():
@@ -34,15 +38,15 @@ if st.button("Analyze"):
         with st.spinner("Analyzing your resume..."):
             if job_description.strip():
                 prompt = f"""
-                You are a professional resume reviewer and ATS (Applicant Tracking System) expert.
+                You are a professional resume reviewer and ATS expert.
 
                 Compare the resume below against the target job description and provide:
-                1. ATS Match Score (0-100) — based on keyword overlap, required skills, and qualifications match
-                2. Matched Keywords — key terms/skills from the job description found in the resume
-                3. Missing Keywords — important terms/skills from the job description NOT found in the resume
+                1. ATS Match Score (0-100)
+                2. Matched Keywords
+                3. Missing Keywords
                 4. Strengths
                 5. Weaknesses
-                6. Suggested Improvements — specific edits to better align the resume with this job description
+                6. Suggested Improvements
 
                 Resume:
                 {resume_input}
@@ -54,10 +58,7 @@ if st.button("Analyze"):
                 prompt = f"""
                 You are a professional resume reviewer.
 
-                No job description was provided, so give a general ATS-readiness assessment based on
-                formatting, clarity, and standard best practices (not keyword matching to a specific role).
-
-                Provide:
+                Provide a general ATS-readiness assessment:
                 1. General ATS Score (0-100)
                 2. Strengths
                 3. Weaknesses
@@ -67,7 +68,10 @@ if st.button("Analyze"):
                 {resume_input}
                 """
 
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model="gemini-3.1-flash-lite",
+                contents=prompt
+            )
 
         st.subheader("AI Feedback")
         st.write(response.text)
